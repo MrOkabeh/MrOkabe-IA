@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dino Neon Run 2.0</title>
+    <style>
+        /* --- Reset e Estilos Base Mobile --- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: none; /* Desativa gestos padrão do navegador */
+            user-select: none; /* Impede seleção de texto */
+            -webkit-user-select: none;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #0a0a0c; /* Fundo Cyberpunk Quase Preto */
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            transition: background 1s ease; /* Transição suave de cor de fundo */
+        }
+
+        /* --- Container Principal do Jogo --- */
+        #game-container {
+            position: relative;
+            width: 95%; /* Quase largura total no mobile */
+            max-width: 600px; /* Limite no desktop */
+            height: 250px;
+            background: linear-gradient(180deg, #16171b 0%, #0a0a0c 100%);
+            overflow: hidden;
+            border-radius: 15px;
+            border: 2px solid rgba(0, 255, 255, 0.3); /* Borda Neon Cian */
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+        }
+
+        /* --- Chão (Linha Neon) --- */
+        #ground {
+            position: absolute;
+            bottom: 30px;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background-color: #00ffff;
+            box-shadow: 0 0 10px #00ffff, 0 0 5px #00ffff;
+        }
+
+        /* --- Dinossauro 2.0 (Design Neon) --- */
+        #dino {
+            position: absolute;
+            bottom: 32px; /* Pouco acima do chão */
+            left: 10%;
+            width: 35px;
+            height: 45px;
+            background-color: #fff; /* Base branca para o brilho */
+            border-radius: 6px 6px 2px 2px;
+            
+            /* Efeito Neon Verde */
+            box-shadow: 
+                0 0 5px #fff,
+                0 0 10px #39ff14,
+                0 0 20px #39ff14,
+                0 0 30px #39ff14;
+            
+            transition: bottom 0.1s linear; /* Salto mais suave */
+            z-index: 10;
+        }
+
+        /* Pequena animação de corrida (treme) */
+        @keyframes running {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-1px); }
+            100% { transform: translateY(0px); }
+        }
+        #dino.running {
+            animation: running 0.2s infinite;
+        }
+
+        /* --- Obstáculos (Cactos 2.0 - Neon Rosa) --- */
+        .obstacle {
+            position: absolute;
+            bottom: 32px;
+            width: 20px;
+            height: 40px;
+            background-color: #fff;
+            border-radius: 4px;
+
+            /* Efeito Neon Rosa/Magenta */
+            box-shadow: 
+                0 0 5px #fff,
+                0 0 10px #ff007f,
+                0 0 20px #ff007f;
+        }
+
+        /* --- HUD (Pontuação) --- */
+        #hud {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            color: #00ffff;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 0 5px #00ffff;
+            z-index: 20;
+        }
+
+        /* --- Tela de Game Over e Início --- */
+        #overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            z-index: 30;
+            border-radius: 13px;
+        }
+
+        #overlay h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+            color: #ff007f;
+            text-shadow: 0 0 10px #ff007f;
+        }
+
+        #overlay p {
+            font-size: 16px;
+            color: #00ffff;
+            text-shadow: 0 0 5px #00ffff;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="hud">SCORE: 00000</div>
+    <div id="ground"></div>
+    <div id="dino" class="running"></div>
+
+    <div id="overlay">
+        <h1>DINO RUN 2.0</h1>
+        <p>Toque para Iniciar</p>
+    </div>
+</div>
+
+<script>
+    const dino = document.getElementById('dino');
+    const container = document.getElementById('game-container');
+    const hud = document.getElementById('hud');
+    const overlay = document.getElementById('overlay');
+    const body = document.body;
+
+    // Configurações do Jogo
+    let isJumping = false;
+    let isGameOver = true; // Começa pausado
+    let score = 0;
+    let gameSpeed = 6; // Velocidade inicial dos obstáculos
+    let gravity = 1.2;
+    let dinoY = 0; // Posição Y relativa ao chão
+
+    // --- Controles (Toque e Espaço) ---
+    function handleInput(e) {
+        if (isGameOver) {
+            startGame();
+        } else if (!isJumping) {
+            jump();
+        }
+        // Previne comportamento padrão do toque (como zoom)
+        if(e.type === 'touchstart') e.preventDefault();
+    }
+
+    document.addEventListener('touchstart', handleInput, { passive: false });
+    document.addEventListener('keydown', (e) => { if(e.code === 'Space') handleInput(e); });
+
+    // --- Ciclo Principal do Jogo (Game Loop) ---
+    function gameLoop() {
+        if (isGameOver) return;
+
+        updateScore();
+        updateDifficulty();
+        requestAnimationFrame(gameLoop);
+    }
+
+    // --- Mecânica de Salto ---
+    function jump() {
+        if (isJumping) return;
+        isJumping = true;
+        dino.classList.remove('running'); // Para animação de corrida
+
+        let jumpHeight = 0;
+        let upInterval = setInterval(() => {
+            // Subida
+            if (jumpHeight >= 100) {
+                clearInterval(upInterval);
+                // Descida
+                let downInterval = setInterval(() => {
+                    if (jumpHeight <= 0) {
+                        clearInterval(downInterval);
+                        isJumping = false;
+                        dinoY = 0;
+                        dino.style.bottom = '32px';
+                        if(!isGameOver) dino.classList.add('running');
+                    } else {
+                        jumpHeight -= 8 * gravity;
+                        dinoY = jumpHeight;
+                        dino.style.bottom = (32 + dinoY) + 'px';
+                    }
+                }, 20);
+            } else {
+                jumpHeight += 12;
+                dinoY = jumpHeight;
+                dino.style.bottom = (32 + dinoY) + 'px';
+            }
+        }, 20);
+    }
+
+    // --- Gerenciamento de Obstáculos ---
+    function createObstacle() {
+        if (isGameOver) return;
+
+        const obstacle = document.createElement('div');
+        obstacle.classList.add('obstacle');
+        
+        // Variação de altura aleatória para o cacto (2.0 feature)
+        let randomHeight = Math.random() * 20 + 30; // Entre 30px e 50px
+        obstacle.style.height = randomHeight + 'px';
+        
+        container.appendChild(obstacle);
+        
+        // Posição inicial (fora da tela à direita)
+        let obstacleX = container.offsetWidth;
+        obstacle.style.left = obstacleX + 'px';
+
+        let moveInterval = setInterval(() => {
+            if (isGameOver) {
+                clearInterval(moveInterval);
+                return;
+            }
+
+            obstacleX -= gameSpeed;
+            obstacle.style.left = obstacleX + 'px';
+
+            // Detecção de Colisão
+            // O dino está entre 10% e (10%+width) da tela.
+            let dinoLeft = container.offsetWidth * 0.1;
+            let dinoRight = dinoLeft + 35;
+            let obstacleLeft = obstacleX;
+            let obstacleRight = obstacleX + 20;
+
+            if (
+                obstacleLeft < dinoRight && 
+                obstacleRight > dinoLeft && 
+                dinoY < randomHeight - 5 // Se o dino estiver baixo o suficiente
+            ) {
+                clearInterval(moveInterval);
+                gameOver();
+            }
+
+            // Remove obstáculo se sair da tela
+            if (obstacleX < -20) {
+                clearInterval(moveInterval);
+                if(container.contains(obstacle)) {
+                    container.removeChild(obstacle);
+                }
+            }
+        }, 20);
+
+        // Agenda o próximo obstáculo (tempo aleatório baseado na velocidade)
+        let nextSpawn = Math.random() * (2000 / (gameSpeed/6)) + (1000 / (gameSpeed/6));
+        setTimeout(createObstacle, nextSpawn);
+    }
+
+    // --- HUD e Dificuldade ---
+    function updateScore() {
+        score++;
+        hud.innerHTML = 'SCORE: ' + score.toString().padStart(5, '0');
+    }
+
+    function updateDifficulty() {
+        // Aumenta velocidade a cada 500 pontos
+        if (score > 0 && score % 500 === 0) {
+            gameSpeed += 0.5;
+            // Efeito visual de mudança de cor de fundo (2.0 feature)
+            if(score === 500) body.style.background = '#1a0a1a'; // Tom Roxo
+            if(score === 1000) body.style.background = '#0a1a1a'; // Tom Azul
+            if(score === 1500) body.style.background = '#1a1a0a'; // Tom Amarelo
+        }
+    }
+
+    // --- Estados do Jogo ---
+    function startGame() {
+        isGameOver = false;
+        score = 0;
+        gameSpeed = 6;
+        dinoY = 0;
+        dino.style.bottom = '32px';
+        dino.classList.add('running');
+        body.style.background = '#0a0a0c'; // Reseta cor de fundo
+
+        // Limpa obstáculos antigos
+        const obstacles = document.querySelectorAll('.obstacle');
+        obstacles.forEach(obs => obs.remove());
+
+        overlay.style.display = 'none';
+        
+        requestAnimationFrame(gameLoop);
+        createObstacle();
+    }
+
+    function gameOver() {
+        isGameOver = true;
+        dino.classList.remove('running');
+        
+        overlay.querySelector('h1').innerText = 'GAME OVER';
+        overlay.querySelector('p').innerText = 'Toque para Reiniciar';
+        overlay.style.display = 'flex';
+    }
+
+</script>
+
+</body>
+</html>
